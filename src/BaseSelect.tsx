@@ -152,7 +152,7 @@ export interface BaseSelectProps extends BaseSelectPrivateProps, React.AriaAttri
   tokenSeparators?: string[];
 
   // >>> Icons
-  allowClear?: boolean | { clearIcon?: RenderNode };
+  allowClear?: boolean | { clearIcon?: React.ReactNode };
   suffixIcon?: RenderNode;
   /** 
    * Clear all icon 
