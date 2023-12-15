@@ -17,6 +17,11 @@ import type { RefTriggerProps } from './SelectTrigger';
 import SelectTrigger from './SelectTrigger';
 import TransBtn from './TransBtn';
 import { getSeparatedContent } from './utils/valueUtil';
+import type { DisplayInfoType, DisplayValueType, Mode, Placement, RenderDOMFunc, RenderNode, RawValueType } from './interface';
+import { useAllowClear } from './hooks/useAllowClear';
+import { warning } from 'rc-util';
+
+export type { DisplayInfoType, DisplayValueType, Mode, Placement, RenderDOMFunc, RenderNode, RawValueType };
 
 const DEFAULT_OMIT_PROPS = [
   'value',
@@ -32,19 +37,6 @@ const DEFAULT_OMIT_PROPS = [
   'onPopupScroll',
   'tabIndex',
 ] as const;
-
-export type RenderNode = React.ReactNode | ((props: any) => React.ReactNode);
-
-export type RenderDOMFunc = (props: any) => HTMLElement;
-
-export type Mode = 'multiple' | 'tags' | 'combobox';
-
-export type Placement = 'bottomLeft' | 'bottomRight' | 'topLeft' | 'topRight';
-
-export type RawValueType = string | number;
-
-export type DisplayInfoType = 'add' | 'remove' | 'clear';
-
 export interface RefOptionListProps {
   onKeyDown: React.KeyboardEventHandler;
   onKeyUp: React.KeyboardEventHandler;
@@ -58,14 +50,6 @@ export type CustomTagProps = {
   onClose: (event?: React.MouseEvent<HTMLElement, MouseEvent>) => void;
   closable: boolean;
 };
-
-export interface DisplayValueType {
-  key?: React.Key;
-  value?: RawValueType;
-  label?: React.ReactNode;
-  title?: string | number;
-  disabled?: boolean;
-}
 
 export interface BaseSelectRef {
   focus: () => void;
@@ -104,10 +88,10 @@ export interface BaseSelectPrivateProps {
     searchValue: string,
     info: {
       source:
-        | 'typing' //User typing
-        | 'effect' // Code logic trigger
-        | 'submit' // tag mode only
-        | 'blur'; // Not trigger event
+      | 'typing' //User typing
+      | 'effect' // Code logic trigger
+      | 'submit' // tag mode only
+      | 'blur'; // Not trigger event
     },
   ) => void;
   /** Trigger when search text match the `tokenSeparators`. Will provide split content */
@@ -168,10 +152,12 @@ export interface BaseSelectProps extends BaseSelectPrivateProps, React.AriaAttri
   tokenSeparators?: string[];
 
   // >>> Icons
-  allowClear?: boolean;
-  showArrow?: boolean;
-  inputIcon?: RenderNode;
-  /** Clear all icon */
+  allowClear?: boolean | { clearIcon?: React.ReactNode };
+  suffixIcon?: RenderNode;
+  /** 
+   * Clear all icon 
+   * @deprecated Please use `allowClear` instead
+   **/
   clearIcon?: RenderNode;
   /** Selector remove icon */
   removeIcon?: RenderNode;
@@ -255,8 +241,7 @@ const BaseSelect = React.forwardRef((props: BaseSelectProps, ref: React.Ref<Base
 
     // Icons
     allowClear,
-    showArrow,
-    inputIcon,
+    suffixIcon,
     clearIcon,
 
     // Dropdown
@@ -633,7 +618,8 @@ const BaseSelect = React.forwardRef((props: BaseSelectProps, ref: React.Ref<Base
 
   useLayoutEffect(() => {
     if (triggerOpen) {
-      const newWidth = Math.ceil(containerRef.current?.offsetWidth);
+      // Guaranteed width accuracy 
+      const newWidth = Math.ceil(containerRef.current?.getBoundingClientRect().width);
       if (containerWidth !== newWidth && !Number.isNaN(newWidth)) {
         setContainerWidth(newWidth);
       }
@@ -676,17 +662,16 @@ const BaseSelect = React.forwardRef((props: BaseSelectProps, ref: React.Ref<Base
   // ==================================================================
 
   // ============================= Arrow ==============================
-  const mergedShowArrow =
-    showArrow !== undefined ? showArrow : loading || (!multiple && mode !== 'combobox');
+  const showSuffixIcon = !!suffixIcon || loading;
   let arrowNode: React.ReactNode;
 
-  if (mergedShowArrow) {
+  if (showSuffixIcon) {
     arrowNode = (
       <TransBtn
         className={classNames(`${prefixCls}-arrow`, {
           [`${prefixCls}-arrow-loading`]: loading,
         })}
-        customizeIcon={inputIcon}
+        customizeIcon={suffixIcon}
         customizeIconProps={{
           loading,
           searchValue: mergedSearchValue,
@@ -699,7 +684,12 @@ const BaseSelect = React.forwardRef((props: BaseSelectProps, ref: React.Ref<Base
   }
 
   // ============================= Clear ==============================
-  let clearNode: React.ReactNode;
+  if (process.env.NODE_ENV !== 'production') {
+    warning(
+      !props.clearIcon,
+      '`clearIcon` will be removed in future. Please use `allowClear` instead.',
+    );
+  }
   const onClearMouseDown: React.MouseEventHandler<HTMLSpanElement> = () => {
     onClear?.();
 
@@ -712,22 +702,21 @@ const BaseSelect = React.forwardRef((props: BaseSelectProps, ref: React.Ref<Base
     onInternalSearch('', false, false);
   };
 
-  if (
-    !disabled &&
-    allowClear &&
-    (displayValues.length || mergedSearchValue) &&
-    !(mode === 'combobox' && mergedSearchValue === '')
-  ) {
-    clearNode = (
-      <TransBtn
-        className={`${prefixCls}-clear`}
-        onMouseDown={onClearMouseDown}
-        customizeIcon={clearIcon}
-      >
-        ×
-      </TransBtn>
-    );
-  }
+  const {
+    allowClear: mergedAllowClear,
+    clearIcon: clearNode
+  } = useAllowClear(
+    prefixCls,
+    onClearMouseDown,
+    displayValues,
+    allowClear,
+    clearIcon,
+    disabled,
+    
+    mergedSearchValue,
+    mode,
+  );
+
 
   // =========================== OptionList ===========================
   const optionList = <OptionList ref={listRef} />;
@@ -738,7 +727,7 @@ const BaseSelect = React.forwardRef((props: BaseSelectProps, ref: React.Ref<Base
     [`${prefixCls}-multiple`]: multiple,
     [`${prefixCls}-single`]: !multiple,
     [`${prefixCls}-allow-clear`]: allowClear,
-    [`${prefixCls}-show-arrow`]: mergedShowArrow,
+    [`${prefixCls}-show-arrow`]: showSuffixIcon,
     [`${prefixCls}-disabled`]: disabled,
     [`${prefixCls}-loading`]: loading,
     [`${prefixCls}-open`]: mergedOpen,
@@ -841,7 +830,7 @@ const BaseSelect = React.forwardRef((props: BaseSelectProps, ref: React.Ref<Base
         )}
         {selectorNode}
         {arrowNode}
-        {clearNode}
+        {mergedAllowClear && clearNode}
       </div>
     );
   }
